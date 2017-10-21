@@ -1,0 +1,36 @@
+{
+  "name": "ii-store",
+  "version": "0.0.2",
+  "description": "A Store utility.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iiulian/store.git"
+  },
+  "keywords": [
+    "store",
+    "data"
+  ],
+  "author": "Iulian Ilea",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/iiulian/store/issues"
+  },
+  "homepage": "https://github.com/iiulian/store#readme",
+  "dependencies": {
+    "@types/lodash": "^4.14.78",
+    "@types/moment": "^2.13.0",
+    "@types/uuid": "^3.4.3",
+    "hash-code": "^1.0.1",
+    "ii-ajax": "0.0.1",
+    "ii-cache": "0.0.4",
+    "ii-jsql": "0.0.2",
+    "ii-observable": "0.0.1",
+    "lodash": "^4.17.4",
+    "moment": "^2.19.1",
+    "uuid": "^3.1.0"
+  }
+}

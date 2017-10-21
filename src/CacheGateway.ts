@@ -7,7 +7,7 @@ export class CacheGateway implements IGateway {
     }
 
     read(jsql): Promise<any> {
-        const key = 'read' + hash(JSON.stringify(jsql));
+        const key = 'read' + hash.hashCode(JSON.stringify(jsql));
         const value = this.cache.get(key);
 
         if (value !== null) {
