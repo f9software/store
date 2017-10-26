@@ -13,6 +13,10 @@ export interface Fields {
 export interface IModelClass<T> {
     new (data: Partial<T>, ghost?: boolean): IModel<T>;
 
+    idKey: string;
+
+    getId: (data: Partial<T>) => string | number;
+
     fields: Fields;
 }
 

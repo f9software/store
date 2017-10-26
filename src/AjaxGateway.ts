@@ -34,6 +34,7 @@ export class AjaxGateway implements IGateway {
                         'delete': deleted
                     })
                     .then((xhr: XMLHttpRequest) => resolve(JSON.parse(xhr.responseText)))
+                    .catch((xhr: XMLHttpRequest) => reject())
             }
         );
     }

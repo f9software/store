@@ -3,10 +3,10 @@ import {IGateway} from "./Gateway";
 import {IModel, IModelClass} from "./Model";
 import {Observable} from "ii-observable";
 import {JSql, Order} from "ii-jsql";
+import {IState} from "./State";
 
 export interface IFilter {
     property: string;
-    // operator: string;
     value: string | number;
 }
 
@@ -17,11 +17,20 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
     private removed: M[] = [];
 
-    private added: M[] = [];
+    private created: M[] = [];
+
+    private updated: M[] = [];
 
     private filters: IFilter[] = [];
 
     private sort: Order;
+
+    /**
+     * Holds the number of the current loaded page.
+     */
+    private page: number;
+
+    private state: IState;
 
     constructor(private gateway: IGateway) {
         super();
@@ -32,8 +41,44 @@ export class Store<M extends IModel<T>, T> extends Observable {
             'datachange',
             'add',
             'remove',
-            'update'
+            'update',
+            'save'
         ];
+    }
+
+    public setState(state: IState) {
+        this.state = state;
+        this.readState();
+    }
+
+    private readState() {
+        const state = this.state;
+
+        const rawCreate: {[key: string]: any} = state.get('create');
+        if (rawCreate) {
+            this.created = rawCreate.map(data => new this.model(Transform.data(data, this.model.fields), true));
+        }
+
+        const rawUpdate: {[key: string]: any} = state.get('update');
+        if (rawUpdate) {
+            this.updated = <M[]> rawUpdate.map(data => new this.model(Transform.data(data, this.model.fields), false));
+        }
+
+        const rawDelete: {[key: string]: any}[] = state.get('delete');
+        if (rawDelete) {
+            this.removed = <M[]> rawDelete.map(data => new this.model(Transform.data(data, this.model.fields), false));
+        }
+
+        state.removeMany(['create', 'update', 'delete']);
+        this.writeState();
+    }
+
+    private writeState() {
+        const state = this.state;
+
+        state.set('create', this.created.map(record => record.getData()));
+        state.set('update', this.updated.map(record => record.getData()));
+        state.set('delete', this.removed.map(record => record.getData()));
     }
 
     public setFilters(filters: IFilter[]) {
@@ -53,12 +98,47 @@ export class Store<M extends IModel<T>, T> extends Observable {
     }
 
     loadData(data) {
-        this.records = data.map(itemData => new this.model(Transform.data(itemData, this.model.fields), false));
+        const removed = this.removed.map(record => this.model.getId(record.getData()));
+        const updated = {};
+        this.updated.forEach(record => updated[this.model.getId(record.getData())] = record);
+
+        this.records = data.map(itemData => {
+                const newData = Transform.data(itemData, this.model.fields);
+                const id = this.model.getId(newData);
+
+                if (removed.indexOf(id) > -1) {
+                    return null;
+                }
+
+                return updated[id] || new this.model(itemData, false);
+            })
+            .filter(record => record !== null);
+
+        if (this.created) {
+            this.created.forEach(
+                record => {
+                    const index = this.calculateInsertIndex(record);
+
+                    if (index > -1) {
+                        this.records.splice(index, 0, record);
+                    }
+                }
+            );
+        }
 
         const records = this.getRecords();
         this.fireEvent('datachange', records);
 
         return records;
+    }
+
+    /**
+     * By default, only insert created records on the new first page.
+     * @param {IModel<T>} record
+     * @returns {number}
+     */
+    protected calculateInsertIndex(record: IModel<T>): number {
+        return this.page === 1 ? 0 : -1;
     }
 
     getRecords(): M[] {
@@ -84,11 +164,13 @@ export class Store<M extends IModel<T>, T> extends Observable {
     }
 
     load(page: number = 1, limit: number = 25): Promise<M[]> {
+        this.page = 1;
+
         const jsql: JSql = {
             limit: [page * limit - limit, limit]
         };
 
-        const where = this.filterToJsql(this.filters)
+        const where = this.filterToJsql(this.filters);
         const order = this.getSort();
 
         if (where && where.length > 0) {
@@ -99,7 +181,9 @@ export class Store<M extends IModel<T>, T> extends Observable {
             jsql.order = order;
         }
 
-        return this.gateway.read(jsql).then(this.loadData.bind(this));
+        return this.gateway
+            .read(jsql)
+            .then(this.loadData.bind(this));
     }
 
     add(records: M[]) {
@@ -108,7 +192,7 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
     insert(index: number = 0, records: M[]) {
         Array.prototype.splice.apply(this.records, (<any[]> [index, 0]).concat(records));
-        this.added = this.added.concat(records);
+        this.created = this.created.concat(records);
         this.fireEvent('add', records);
     }
 
@@ -120,12 +204,12 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
     save() {
         const me = this;
-        const added = this.added;
+        const created = this.created;
         const create = {};
         const update = {};
         const del = this.removed.map(record => record.getData());
 
-        this.added.map(record => create[record.__id] = Transform.serialize(record.getData(), this.model.fields));
+        this.created.map(record => create[record.__id] = Transform.serialize(record.getData(), this.model.fields));
 
         const modified = this.records
             .filter(record => !record.getFlag('ghost') && record.getFlag('modified'));
@@ -133,7 +217,7 @@ export class Store<M extends IModel<T>, T> extends Observable {
         modified.forEach(
             record => update[record.__id] = Transform.serialize(record.getData(), this.model.fields));
 
-        return this.gateway.write(
+        const promise = this.gateway.write(
                 create,
                 del,
                 update
@@ -149,13 +233,13 @@ export class Store<M extends IModel<T>, T> extends Observable {
                     const create = payload.create;
 
                     if (create) {
-                        added.forEach(record => {
+                        created.forEach(record => {
                             record.setData(create[record.__id]);
                             record.commit();
 
                             records.create.push(record);
                         });
-                        added.length = 0;
+                        created.length = 0;
                     }
 
                     const updated = payload.update;
@@ -168,11 +252,20 @@ export class Store<M extends IModel<T>, T> extends Observable {
                         });
                     }
 
+                    if (this.state) {
+                        this.state.removeMany(['create', 'update', 'delete']);
+                    }
+
                     me.fireDataChange();
 
                     return records;
                 }
-            );
+            )
+            .catch(error => this.writeState());
+
+        this.fireEvent('save', this, {create: create, 'delete': del, update: update}, promise);
+
+        return promise;
     }
 
     public fireDataChange() {
