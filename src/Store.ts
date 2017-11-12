@@ -4,6 +4,7 @@ import {IModel, IModelClass} from "./Model";
 import {Observable} from "ii-observable";
 import {JSql, Order} from "ii-jsql";
 import {IState} from "./State";
+import * as _ from "lodash";
 
 export interface IFilter {
     property: string;
@@ -25,12 +26,16 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
     private sort: Order;
 
+    private lastOptions: {[key: string]: any};
+
     /**
      * Holds the number of the current loaded page.
      */
     private page: number;
 
     private state: IState;
+
+    private baseParams: {[key: string]: any};
 
     constructor(private gateway: IGateway) {
         super();
@@ -79,6 +84,10 @@ export class Store<M extends IModel<T>, T> extends Observable {
         state.set('create', this.created.map(record => record.getData()));
         state.set('update', this.updated.map(record => record.getData()));
         state.set('delete', this.removed.map(record => record.getData()));
+    }
+
+    public setBaseParams(params: {[key: string]: any}) {
+        this.baseParams = params;
     }
 
     public setFilters(filters: IFilter[]) {
@@ -145,44 +154,38 @@ export class Store<M extends IModel<T>, T> extends Observable {
         return [].concat(this.records);
     }
 
-    private filterToJsql(filters) {
-        const jsql = [];
+    load(options): Promise<M[]> {
+        this.page = options.page || 1;
 
-        filters.forEach(
-            (filter, index, arr) => {
-                jsql.push({
-                    [filter.property]: filter.value
-                });
-
-                if (index < arr.length - 1) {
-                    jsql.push('AND');
-                }
-            }
-        )
-
-        return jsql;
-    }
-
-    load(page: number = 1, limit: number = 25): Promise<M[]> {
-        this.page = 1;
-
-        const jsql: JSql = {
-            limit: [page * limit - limit, limit]
+        const payload: {[key: string]: any} = {
+            page: options.page,
         };
 
-        const where = this.filterToJsql(this.filters);
-        const order = this.getSort();
-
-        if (where && where.length > 0) {
-            jsql.where = where;
+        if (this.baseParams) {
+            payload.params = _.assign({}, this.baseParams);
         }
 
-        if (order) {
-            jsql.order = order;
+        if (options.params) {
+            payload.params = _.assign(payload.params || {}, options.params);
         }
+
+        if (options.limit) {
+            payload.limit = options.limit;
+        }
+
+        if (this.filters.length > 0) {
+            payload.filters = this.filters;
+        }
+
+        const sort = this.getSort();
+        if (sort) {
+            payload.sort = sort;
+        }
+
+        this.lastOptions = options;
 
         return this.gateway
-            .read(jsql)
+            .read(payload)
             .then(this.loadData.bind(this));
     }
 
@@ -207,7 +210,7 @@ export class Store<M extends IModel<T>, T> extends Observable {
         const created = this.created;
         const create = {};
         const update = {};
-        const del = this.removed.map(record => record.getData());
+        const del = this.removed.map(record => record.get(this.model.idKey));
 
         this.created.map(record => create[record.__id] = Transform.serialize(record.getData(), this.model.fields));
 
