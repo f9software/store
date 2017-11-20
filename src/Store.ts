@@ -37,7 +37,7 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
     private baseParams: {[key: string]: any};
 
-    constructor(private gateway: IGateway) {
+    constructor(private gateway: IGateway, id: string) {
         super();
     }
 
@@ -136,7 +136,8 @@ export class Store<M extends IModel<T>, T> extends Observable {
         }
 
         const records = this.getRecords();
-        this.fireEvent('datachange', records);
+        // this.fireEvent('datachange', records);
+        this.fireDataChange();
 
         return records;
     }
@@ -161,12 +162,13 @@ export class Store<M extends IModel<T>, T> extends Observable {
             page: options.page,
         };
 
+        const params = {};
         if (this.baseParams) {
-            payload.params = _.assign({}, this.baseParams);
+            _.assign(params, this.baseParams);
         }
 
         if (options.params) {
-            payload.params = _.assign(payload.params || {}, options.params);
+            _.assign(params, options.params);
         }
 
         if (options.limit) {
@@ -185,7 +187,7 @@ export class Store<M extends IModel<T>, T> extends Observable {
         this.lastOptions = options;
 
         return this.gateway
-            .read(payload)
+            .read(payload, params)
             .then(this.loadData.bind(this));
     }
 
@@ -197,20 +199,31 @@ export class Store<M extends IModel<T>, T> extends Observable {
         Array.prototype.splice.apply(this.records, (<any[]> [index, 0]).concat(records));
         this.created = this.created.concat(records);
         this.fireEvent('add', records);
+        this.fireDataChange();
     }
 
     remove(records: M[]) {
         this.records = this.records.filter(record => records.indexOf(record) === -1);
-        this.removed = this.removed.concat(records);
+        Array.prototype.push.apply(this.removed, records);
         this.fireEvent('remove', records);
+        this.fireDataChange();
     }
 
     save() {
         const me = this;
         const created = this.created;
-        const create = {};
-        const update = {};
-        const del = this.removed.map(record => record.get(this.model.idKey));
+        const create: {[key: string]: {[key: string]: any}} = {};
+        const update: {[key: string]: {[key: string]: any}} = {};
+        const mapDelete: {[key: string]: M} = {};
+
+        // we prepare the delete payload to send to backend
+        const del: string[] = this.removed.map(
+            record => {
+                const id = this.model.getId(record.getData());
+                mapDelete[id] = record;
+                return id;
+            }
+        );
 
         this.created.map(record => create[record.__id] = Transform.serialize(record.getData(), this.model.fields));
 
@@ -223,7 +236,8 @@ export class Store<M extends IModel<T>, T> extends Observable {
         const promise = this.gateway.write(
                 create,
                 del,
-                update
+                update,
+                this.baseParams
             )
             .then(
                 payload => {
@@ -245,7 +259,7 @@ export class Store<M extends IModel<T>, T> extends Observable {
                         created.length = 0;
                     }
 
-                    const updated = payload.update;
+                    const updated: {[key: string]: T} = payload.update;
                     if (updated) {
                         modified.forEach( record => {
                             record.setData(updated[record.__id]);
@@ -253,6 +267,24 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
                             records.update.push(record);
                         });
+                    }
+
+                    // we clean this.removed
+                    const deleted: string[] = payload.delete;
+                    if (deleted) {
+                        deleted.forEach(
+                            id => {
+                                if (mapDelete[id]) {
+                                    const record = mapDelete[id];
+                                    const index = this.removed.indexOf(record);
+                                    if (index > -1) {
+                                        this.removed.splice(index, 1);
+                                    }
+
+                                    records.delete.push(record);
+                                }
+                            }
+                        );
                     }
 
                     if (this.state) {

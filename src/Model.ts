@@ -13,9 +13,9 @@ export interface Fields {
 export interface IModelClass<T> {
     new (data: Partial<T>, ghost?: boolean): IModel<T>;
 
-    idKey: keyof T;
+    idKey: string;
 
-    getId: (data: Partial<T>) => string | number;
+    getId: (data: Partial<T>) => string;
 
     fields: Fields;
 }

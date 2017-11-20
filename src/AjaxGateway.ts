@@ -28,13 +28,16 @@ export class AjaxGateway implements IGateway {
         return endpoint;
     }
 
-    read(payload: {[key: string]: any}): Promise<any> {
+    read(payload: {[key: string]: any}, params?: {[key: string]: any}): Promise<any> {
         const ajax = new Ajax('POST', this.url);
 
         return new Promise(
             (resolve, reject) => {
                 ajax.send({
-                    [this.getEndpoint('read')]: payload
+                    params: params,
+                    actions: {
+                        [this.getEndpoint('read')]: payload
+                    }
                 }).then(
                     (xhr: XMLHttpRequest) => {
                         resolve(JSON.parse(xhr.responseText).read);
@@ -44,16 +47,19 @@ export class AjaxGateway implements IGateway {
         );
     }
 
-    write(added, deleted, updated): Promise<{create: {[key: string]: any}, update: any[], 'delete': any[]}> {
+    write(added, deleted, updated, params?: {[key: string]: any}): Promise<{create: {[key: string]: any}, update: any[], 'delete': any[]}> {
         const url = this.url;
         const ajax = new Ajax('POST', url);
 
         return new Promise(
             (resolve, reject) => {
                 ajax.send({
-                        [this.getEndpoint('create')]: added,
-                        [this.getEndpoint('update')]: updated,
-                        [this.getEndpoint('delete')]: deleted
+                        params: params,
+                        actions: {
+                            [this.getEndpoint('create')]: added,
+                            [this.getEndpoint('update')]: updated,
+                            [this.getEndpoint('delete')]: deleted
+                        }
                     })
                     .then((xhr: XMLHttpRequest) => resolve(JSON.parse(xhr.responseText)))
                     .catch((xhr: XMLHttpRequest) => reject())
