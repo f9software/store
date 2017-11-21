@@ -4,3 +4,4 @@ export * from "./src/Gateway";
 export * from "./src/Model";
 export * from "./src/Store";
 export * from "./src/Transform";
+export * from "./src/Head";

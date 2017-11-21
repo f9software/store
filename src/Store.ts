@@ -37,7 +37,9 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
     private baseParams: {[key: string]: any};
 
-    constructor(private gateway: IGateway, id: string) {
+    private isLoading: boolean = false;
+
+    constructor(private gateway: IGateway) {
         super();
     }
 
@@ -156,6 +158,8 @@ export class Store<M extends IModel<T>, T> extends Observable {
     }
 
     load(options): Promise<M[]> {
+        this.isLoading = true;
+
         this.page = options.page || 1;
 
         const payload: {[key: string]: any} = {
@@ -188,7 +192,22 @@ export class Store<M extends IModel<T>, T> extends Observable {
 
         return this.gateway
             .read(payload, params)
-            .then(this.loadData.bind(this));
+            .then(
+                data => {
+                    this.isLoading = false;
+                    return this.loadData(data);
+                }
+            );
+    }
+
+    reload() {
+        if (this.lastOptions) {
+            this.load(this.lastOptions);
+        }
+    }
+
+    canReload() {
+        return this.lastOptions ? true : false;
     }
 
     add(records: M[]) {

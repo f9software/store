@@ -31,12 +31,16 @@ export class CacheGateway implements IGateway {
             .then(
                 result => {
                     // the changes have been saved, so we need to remove all the "read" items in the cache
-                    this.cache.removeMany(
-                        this.cache.getKeys().filter(key => /read/.test(key))
-                    );
+                    this.clearReadCache();
 
                     return result;
                 }
             );
+    }
+
+    clearReadCache() {
+        this.cache.removeMany(
+            this.cache.getKeys().filter(key => /read/.test(key))
+        );
     }
 }
