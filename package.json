@@ -1,6 +1,6 @@
 {
   "name": "ii-store",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "description": "A Store utility.",
   "main": "index.js",
   "scripts": {

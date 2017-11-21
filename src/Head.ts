@@ -67,6 +67,8 @@ export class Head {
 
         this.tid = window.setTimeout(
             () => {
+                this.tid = -1;
+                this.run();
                 this.iid = window.setInterval(this.run.bind(this), msInterval);
             },
             timeout
@@ -74,7 +76,7 @@ export class Head {
     }
 
     stop() {
-        if (this.iid) {
+        if (this.iid > -1) {
             clearTimeout(this.iid);
             this.iid = -1;
         }
